@@ -1,5 +1,7 @@
 //: Playground - noun: a place where people can play
 
+import Foundation
+
 protocol ParserType {
     associatedtype Value
     typealias ParseResult = (value: Value, remainder: String)
@@ -67,7 +69,7 @@ struct Bind<A, B>: ParserType {
     }
 }
 
-struct SequentialParser<A, B>: ParserType {
+struct Sequential<A, B>: ParserType {
     typealias Value = (A, B)
     
     let p: AnyParser<A>
@@ -108,6 +110,14 @@ extension ParserType {
 //    }
 }
 
+infix operator >>=
+
+extension ParserType {
+    static func >>= <Next, P: ParserType>(lhs: Self, rhs: @escaping ((Self.Value) -> P)) -> Bind<Self.Value, Next> where P.Value == Next {
+        return lhs.bind(rhs)
+    }
+}
+
 struct ConditionalParser: ParserType {
     private let predicate: ((Character) -> Bool)
     
@@ -139,6 +149,65 @@ let bind = Bind(r1) { (input: String) -> AnyParser<String> in
 bind.parse(input: "hello")
 
 let onlyA = ConditionalParser { $0 == "a" }
-let a = SequentialParser(onlyA, onlyA)
+let a = Sequential(onlyA, onlyA)
 a.parse(input: "a")
 
+// MARK: Specific Types of Characters
+
+extension CharacterSet {
+    var parser: ConditionalParser {
+        return ConditionalParser { ch in
+            guard let us = UnicodeScalar(String(ch)) else { return false }
+            return self.contains(us)
+        }
+    }
+}
+
+let digit = CharacterSet.decimalDigits.parser
+let lower = CharacterSet.lowercaseLetters.parser
+let upper = CharacterSet.uppercaseLetters.parser
+let letter = CharacterSet.letters.parser
+
+// a parser that takes two lowercase letters in sequence
+let doubleLower = lower >>= { ch1 in lower >>= { ch2 in Result("\(ch1)\(ch2)") } }
+
+doubleLower.parse(input: "abcd")
+
+// A 'choice' operator will help us combine parsers
+struct Choice<A>: ParserType {
+    typealias Value = A
+
+    private let p: AnyParser<A>
+    private let q: AnyParser<A>
+
+    init<P: ParserType, Q: ParserType>(_ p: P, _ q: Q) where P.Value == A, Q.Value == A {
+        self.p = p.asAny()
+        self.q = q.asAny()
+    }
+
+    func parse(input: String) -> [(value: A, remainder: String)] {
+        return Array([p.parse(input: input), q.parse(input: input)].joined())
+    }
+}
+
+extension ParserType {
+    func plus<P: ParserType>(other: P) -> Choice<Value> where P.Value == Self.Value {
+        return Choice(self, other)
+    }
+}
+
+// we can write a word parser in terms of our letter parser and itself
+struct Word: ParserType {
+    typealias Value = String
+
+    private func anyWord() -> AnyParser<String> {
+        return (letter >>= { c in Word() >>= { s in Result("\(c)\(s)") } }).asAny()
+    }
+
+    func parse(input: String) -> [(value: String, remainder: String)] {
+        return anyWord().plus(other: Result("")).parse(input: input)
+    }
+}
+
+let word = Word()
+word.parse(input: "hello world")
