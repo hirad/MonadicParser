@@ -8,20 +8,27 @@ func result<A>(_ a: A) -> Parser<A> {
     return { [(a, $0)] }
 }
 
+// Example:
+let resultIsT = result("T")
+print(resultIsT("Hello world"))
+
 func zero<A>() -> Parser<A> {
     return { _ in [] }
 }
 
-func item() -> Parser<Character> {
+func item() -> Parser<Character> { // -> (String) -> [(Character, String)]
     return { input in
-        if let fst = input.characters.first {
-            let rem = input.characters.dropFirst()
+        if let fst = input.first {
+            let rem = input.dropFirst()
             return [(fst, String(rem))]
         }
 
         return []
     }
 }
+
+// Example
+print(item()("Hello world"))
 
 func bind<A, B>(_ p: @escaping Parser<A>, _ f: @escaping ((A) -> Parser<B>)) -> Parser<B> {
     return { input in
@@ -35,9 +42,16 @@ func >>= <A, B>(p: @escaping Parser<A>, f: @escaping ((A) -> Parser<B>)) -> Pars
     return bind(p, f)
 }
 
+// Example
+let boundParser = item() >>= { _ in item() }
+print(boundParser("Hello world"))
+
 func sequential<A, B>(_ p: @escaping Parser<A>, _ q: @escaping Parser<B>) -> Parser<(A,B)> {
     return (p >>= { a in q >>= { b in result((a, b)) } })
 }
+
+let seqParser = sequential(item(), item())
+print(seqParser("Hello world"))
 
 func satisfy(_ pred: @escaping (Character) -> Bool) -> Parser<Character> {
     return (item() >>= { pred($0) ? result($0) : zero() })
@@ -56,6 +70,7 @@ let digit = CharacterSet.decimalDigits.parser
 let lower = CharacterSet.lowercaseLetters.parser
 let upper = CharacterSet.uppercaseLetters.parser
 let letter = CharacterSet.letters.parser
+let alphanumeric = CharacterSet.alphanumerics.parser
 
 let doubleLower = lower >>= { ch1 in lower >>= { ch2 in result("\(ch1)\(ch2)") } }
 
@@ -80,30 +95,21 @@ var word: Parser<String> {
 
 word("hello word")
 
-class A {
-    var foo: Int! = 1
-}
+let markdown = """
+# Intro
 
-let a = A()
-switch a.foo {
-case 0:
-    print("0")
-case 1:
-    print("Nada")
-    default:
-    print("default")
-}
+This _is_ a test of **markdown** parsing.
 
-//protocol ResultGenerator {
-//    associatedtype Value
-//    func result<R: ResultGenerator>(_ a: Value) -> R where R.Value == Value
-//}
-//
-//protocol Bindable {
-//    associatedtype Value
-//    func bind<B1: Bindable, B2: Bindable>(_ lhs: B1, _ f: ((Value) -> B2)) -> B2
-//}
-//
-//protocol Monad: ResultGenerator, Bindable {}
+As specified at [CommonMark](http://commonmark.org).
+
+"""
+let mdLine = "_is_ a test of **markdown** parsing."
+
+/// Markdown Parsers
+var beginItalics1 = sequential(satisfy({ $0 == Character("_") }), alphanumeric)
+var endItalics1 = sequential(alphanumeric, satisfy({ $0 == Character("_") }))
+
+let c = beginItalics1(mdLine).first
+endItalics1(mdLine)
 
 //: [Next](@next)

@@ -30,8 +30,8 @@ struct Item: ParserType {
     typealias Value = Character
     
     func parse(input: String) -> [(value: Character, remainder: String)] {
-        if let fst = input.characters.first {
-            let remainder = input.characters.dropFirst()
+        if let fst = input.first {
+            let remainder = input.dropFirst()
             
             return [(fst, String(remainder))]
         }
